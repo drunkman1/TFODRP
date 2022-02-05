@@ -85,6 +85,17 @@ def crop_minAreaRect(img, rect):
                        pts[1][0]:pts[2][0]]
     return img_crop
 
+def unsharp_mask(image, kernel_size=(5, 5), sigma=1.0, amount=1.0, threshold=0):
+    """Return a sharpened version of the image, using an unsharp mask."""
+    blurred = cv2.GaussianBlur(image, kernel_size, sigma)
+    sharpened = float(amount + 1) * image - float(amount) * blurred
+    sharpened = np.maximum(sharpened, np.zeros(sharpened.shape))
+    sharpened = np.minimum(sharpened, 255 * np.ones(sharpened.shape))
+    sharpened = sharpened.round().astype(np.uint8)
+    if threshold > 0:
+        low_contrast_mask = np.absolute(image - blurred) < threshold
+        np.copyto(sharpened, image, where=low_contrast_mask)
+    return sharpened
 
 def main():
     labels = load_labels()
@@ -114,11 +125,14 @@ def main():
             img_ob = frame[ymin:ymax,xmin:xmax]
             img_gray = cv2.cvtColor(img_ob,cv2.COLOR_BGR2GRAY)
             ob1 = img_gray.copy()
-            cv2.imshow('ob',ob1)
+            #cv2.imshow('ob',ob1)
             #ob1 = cv2.resize(ob1,(w_resize,h_resize))
             #gray = cv2.medianBlur(ob1,5)
             #gray = cv2.bilateralFilter(ob1,9,75,75)
             #gray = cv2.cvtColor(ob1,cv2.COLOR_BGR2GRAY)
+            ob1 = cv2.filter2D(ob1,-1,kernel_sharpen)
+            #sharpened_img = unsharp_mask(ob1) 
+            
             edge_detec = cv2.Canny(ob1, 30, 200,None,None,True)
             kernel2= cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(1,1))
             kernel3= cv2.getStructuringElement(cv2.MORPH_RECT,(4,4))
