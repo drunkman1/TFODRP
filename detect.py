@@ -8,6 +8,11 @@ CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 
 
+kernel_sharpen = np.array([0,-1,-0],[-1,5,-1],[0,-1,0])
+# Shparen use filter2D(img,-1,kểnl)
+kernel_unsharp_masking = 1 / (256*np.array([1,4,6,4,1],[4,16,24,16,4],[6,24,-476,24,6],[4,16,24,16,4],[1,4,6,4,1]))
+# Unsharp_masking based on gaussian blur and amount =1 and threshold =0
+
 def load_labels(path='labels.txt'):
   """Loads the labels file. Supports files with or without index numbers."""
   with open(path, 'r', encoding='utf-8') as f:
@@ -88,6 +93,8 @@ def main():
     _, input_height, input_width, _ = interpreter.get_input_details()[0]['shape']
 
     cap = cv2.VideoCapture(0)
+    wi = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    he = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     while cap.isOpened():
         ret, frame = cap.read()
         img = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), (320,320))
@@ -95,16 +102,68 @@ def main():
         print(res)
 
         for result in res:
+            # Tọa độ tương đối
             ymin, xmin, ymax, xmax = result['bounding_box']
-            xmin = int(max(1,xmin * CAMERA_WIDTH))
-            xmax = int(min(CAMERA_WIDTH, xmax * CAMERA_WIDTH))
-            ymin = int(max(1, ymin * CAMERA_HEIGHT))
-            ymax = int(min(CAMERA_HEIGHT, ymax * CAMERA_HEIGHT))
-            
+            # Tọa độ tuyệt đối theo frame và chuẩn hóa để ko lỗi ngoài frame
+            xmin = int(max(1,xmin * wi))
+            xmax = int(min(wi, xmax * wi))
+            ymin = int(max(1, ymin * he))
+            ymax = int(min(he, ymax * he))
+
             cv2.rectangle(frame,(xmin, ymin),(xmax, ymax),(0,255,0),3)
+            img_ob = frame[ymin:ymax,xmin:xmax]
+            img_gray = cv2.cvtColor(img_ob,cv2.COLOR_BGR2GRAY)
+            ob1 = img_gray.copy()
+            cv2.imshow('ob',ob1)
+            #ob1 = cv2.resize(ob1,(w_resize,h_resize))
+            #gray = cv2.medianBlur(ob1,5)
+            #gray = cv2.bilateralFilter(ob1,9,75,75)
+            #gray = cv2.cvtColor(ob1,cv2.COLOR_BGR2GRAY)
+            edge_detec = cv2.Canny(ob1, 30, 200,None,None,True)
+            kernel2= cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(1,1))
+            kernel3= cv2.getStructuringElement(cv2.MORPH_RECT,(4,4))
+            edge_detec = cv2.erode(edge_detec,kernel2,iterations=1)
+            edge_detec = cv2.dilate(edge_detec,kernel3,iterations=1)
+            cv2.imshow('edge', edge_detec)
+            contours, hierarchy = cv2.findContours(edge_detec, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+            # Chọn Ob to nhất
+            tff = 0
+            area_save = 0
+            for i in range(len(contours)):
+                if cv2.contourArea(contours[i]) > area_save:
+                    area_save = cv2.contourArea(contours[i])
+                    tff = i
+            # print('tf:', tff)
+            cv2.drawContours(ob1, contours,tff,(255,0,0),2)
+            
+            # Xoay ngang
+            rect = cv2.minAreaRect(contours[tff])
+            img_croped = crop_minAreaRect(img_ob,rect)
+            cv2.imshow('croped',img_croped)
+
+            # Lấy Feature mình cần
+            h,w = img_croped.shape[:2]
+            CP = img_croped[0:h,0:round(0.1*w)]
+            if CP is not None:
+                
+                CO = CP.copy()
+                ret,thresh1 = cv2.threshold(CO,130,255,cv2.THRESH_BINARY_INV)
+                kernel2= cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(4,4))     #9,10 cho KQ OKE
+                kernel3= cv2.getStructuringElement(cv2.MORPH_RECT,(11,11)) # khả thi dải ksize rộng
+                erosion = cv2.erode(thresh1,kernel2,iterations = 1)
+                dilation = cv2.dilate(erosion,kernel3,iterations = 1)
+                contours,hierarchy= cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                for i in range(len(contours)):
+                    cv2.drawContours(CP, contours,i,(255,0,0),3)
+                    print("Cout: ", str(len(contours) ))
+                    cv2.imshow('OriIMG',CP)
+            '''
+            if len(contours) != (6 or 4):
+                print('NG')
+            else: print('OK')
             cv2.putText(frame,labels[int(result['class_id'])],(xmin, min(ymax, CAMERA_HEIGHT-20)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,(255,255,255),2,cv2.LINE_AA) 
-
+            '''
         cv2.imshow('Pi Feed', frame)
 
         if cv2.waitKey(10) & 0xFF ==ord('q'):
