@@ -3,6 +3,7 @@ import re
 import cv2
 from tflite_runtime.interpreter import Interpreter
 import numpy as np
+#import RPi.GPIO as GPIO
 #from joblib import load
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
